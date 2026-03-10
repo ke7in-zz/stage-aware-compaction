@@ -6,4 +6,7 @@ dist/
 *.js.map
 *.d.ts.map
 coverage/
-.opencode/
+.tmp/
+.opencode/*
+!.opencode/plugins/
+!.opencode/plugins/**

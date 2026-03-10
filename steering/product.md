@@ -1,11 +1,13 @@
 # Product — stage-aware-compaction
 
 ## Vision
+
 A custom OpenCode compaction plugin that gives long-running AI coding agent sessions
 better continuity across compaction boundaries by making the compaction decision
 stage-aware rather than purely token-count-driven.
 
 ## Goals
+
 1. Preserve task-critical context (active spec, current todo list, open blockers)
    across compaction events without manual intervention.
 2. Reduce the frequency of agent "amnesia" — where a compacted session loses
@@ -18,22 +20,26 @@ stage-aware rather than purely token-count-driven.
    active task (correct next step, no repeated tool calls) in ≥90% of observed sessions.
 
 ## Target Users
+
 OpenCode power users running long, multi-session agentic tasks (spec execution,
 large refactors, multi-file features) who hit compaction boundaries frequently
 and need the agent to resume coherently.
 
 Key needs:
+
 - The agent must "remember" where it was mid-task after compaction.
 - Minimal setup — one config block in `opencode.json`.
 - Works within the AGENTS.md / skills / SESSION.md workflow vocabulary.
 
 ## Non-goals
+
 - Not a general-purpose memory or RAG system.
 - Not a replacement for OpenCode's native compaction algorithm.
 - Not targeting casual / short-session OpenCode users.
 - No UI — config-only integration via `opencode.json`.
 
 ## Key Constraints
+
 - Must conform to the OpenCode `experimental.session.compacting` hook API
   (`@opencode-ai/plugin` type: `Plugin`).
 - Configuration lives in the user's `opencode.json`; no external services or databases.
