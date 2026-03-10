@@ -1,6 +1,7 @@
 # Technical Architecture — stage-aware-compaction
 
 ## Stack
+
 - **Language**: TypeScript (strict mode)
 - **Runtime**: Bun (OpenCode's native runtime; plugins run inside the OpenCode process)
 - **Plugin surface**: OpenCode plugin hook API — `@opencode-ai/plugin` for types
@@ -15,6 +16,7 @@
 - **Lint / format**: eslint (`@typescript-eslint/recommended`) + prettier
 
 ## Architecture Overview
+
 The plugin is a TypeScript module loaded by OpenCode from `.opencode/plugins/` in
 the user's project (or globally from `~/.config/opencode/plugins/`). It exports a
 single `Plugin` function that registers the `experimental.session.compacting` hook.
@@ -31,6 +33,7 @@ At each compaction event, the hook:
    entirely for custom compaction behaviour.
 
 Boundaries:
+
 - Plugin code **reads** project files (`SESSION.md`, `.codex/specs/`, `AGENTS.md`)
   but never writes them.
 - All configuration (retention policies, stage detection rules) lives in
@@ -39,6 +42,7 @@ Boundaries:
 - The plugin does not spawn subprocesses; it uses Bun's native file APIs.
 
 ## Key Decisions
+
 - **TypeScript over JavaScript**: type safety on the hook API contracts catches
   mismatches early; OpenCode itself is TypeScript.
 - **Plugin loaded from `.opencode/plugins/`**: zero install friction for users —
@@ -55,17 +59,20 @@ Boundaries:
   for fully custom compaction strategies, since replacing it discards the context array.
 
 ## Performance Requirements
+
 - Hook execution must complete quickly to avoid blocking OpenCode's compaction path.
   Target: filesystem reads only (SESSION.md + one spec file); no network, no subprocess.
 - Must not hold open file handles or accumulate memory across hook calls.
 
 ## Security Requirements
+
 - Read-only filesystem access (project files only; no home-dir or system paths
   outside the project root).
 - No network egress.
 - No eval or dynamic code execution of user-provided content.
 
 ## Constraints
+
 - Targets the OpenCode `experimental.session.compacting` hook API (current as of
   OpenCode 2026-03-09 release).
 - Runtime is Bun (version bundled with OpenCode); no separate Node.js installation

@@ -1,6 +1,7 @@
 # Project Structure — stage-aware-compaction
 
 ## Directory Layout
+
 ```
 stage-aware-compaction/
 ├── src/                  # TypeScript source (this repo — the plugin itself)
@@ -24,6 +25,7 @@ own project's `.opencode/plugins/` directory. This repo is the development works
 for that plugin file.
 
 ## Naming Conventions
+
 - **Files**: `kebab-case.ts` for source, matching the exported module's primary concept.
 - **Classes / interfaces**: `PascalCase`.
 - **Functions / variables**: `camelCase`.
@@ -32,6 +34,7 @@ for that plugin file.
 - **Test files**: co-located with source or under `tests/`; suffix `.test.ts`.
 
 ## Module / Package Boundaries
+
 - `src/index.ts` is the **only** module that imports from OpenCode's hook API;
   everything else is pure logic with no external dependencies.
 - `stage-detector.ts` may read the filesystem; it must **not** write.
@@ -41,6 +44,7 @@ for that plugin file.
 - Tests must not touch the real filesystem; use in-memory stubs/fakes.
 
 ## Quality Standards
+
 - TypeScript strict mode (`"strict": true` in `tsconfig.json`).
 - Coverage target: ≥80% for all touched modules.
 - Lint: eslint with `@typescript-eslint/recommended` rule set.
