@@ -163,6 +163,87 @@ continuation schema.
 
 That is intentionally not implemented here.
 
+## Live dogfood evidence
+
+The plugin was validated with a real compaction event in session
+`ses_32738bc67ffesdQJgepVbfae50`. Token count climbed from 18k → 143k across six
+turns then dropped to 51k — consistent with compaction. The assistant message with
+`"mode": "compaction"` and `"summary": true` contained this continuation block,
+preserved verbatim from the plugin's injected context:
+
+```md
+## Stage-Aware Continuation
+
+Preserve the canonical workflow names exactly. Treat this as the authoritative resume brief for compaction continuity.
+
+## Workflow Type
+
+- spec
+
+## Canonical Workflow Stage
+
+- spec-execute
+
+## Source Artifacts
+
+- .codex/specs/dogfood-spec/requirements.md
+- .codex/specs/dogfood-spec/design.md
+- .codex/specs/dogfood-spec/tasks.md
+- .codex/specs/dogfood-spec/context.md
+- .codex/specs/dogfood-spec/harness/feature_list.json
+
+## Current Artifact
+
+- .codex/specs/dogfood-spec/tasks.md
+
+## Artifact Status
+
+- dogfood-spec: 1 task(s) complete, 2 remaining; currently mid-execution on Task 2 — Run real compaction dogfood (1 - Dogfood).
+
+## Transition Gate
+
+- For the current batch: declared task gates pass via `.codex/scripts/harness.sh spec gate <spec-name> <task-id>`, batch validation passes, `/review` feedback is addressed, `context.md` is updated, and the batch stops after commit.
+
+## Primary Objective
+
+- Complete Task 2 gate declaration, update `context.md` with discoveries from the compaction simulation, then proceed to Task 3 — Inspect resumed state.
+
+## Current Step
+
+- Finalize Task 2 — Run real compaction dogfood (1 - Dogfood): declare the gate, update `context.md`, then begin Task 3 — Inspect resumed state (1 - Dogfood).
+
+## Status
+
+- dogfood-spec is in spec-execute; 1 task(s) formally complete, Task 2 in progress (simulation done, gate not yet declared).
+
+## Completed
+
+- `requirements.md` approved.
+- `design.md` approved.
+- `tasks.md` approved and execution started.
+- Task 1 — Create plugin scaffold (1 - Dogfood) [Batch 0].
+- Compaction simulation (6 large DOGFOOD-CONTEXT messages, responses ok-1 through ok-6) executed successfully in current session.
+
+## Remaining
+
+- Declare gate for Task 2 via harness.
+- Update `context.md` with session discoveries.
+- Task 3 — Inspect resumed state (1 - Dogfood).
+
+## Next Action
+
+- Read `context.md` first.
+- Declare Task 2 gate: `.codex/scripts/harness.sh spec gate dogfood-spec 2`
+- Update `context.md` with: compaction simulation results, ok-1 through ok-6 continuity confirmed, inject-only mode decision, plugin types package blocker.
+- Then begin Task 3 — Inspect resumed state (1 - Dogfood).
+```
+
+Because the plugin is inject-only, the compaction model rewrites the injected context
+rather than reproducing it verbatim — proof is behavioral. The compaction summary
+preserved `dogfood-spec`, canonical `spec-execute`, the `context.md`-first
+instruction, harness gate command pattern, artifact progression, and open
+decisions/discoveries. That is the intended outcome.
+
 ## Validation scenarios
 
 Automated tests cover two realistic compaction scenarios:

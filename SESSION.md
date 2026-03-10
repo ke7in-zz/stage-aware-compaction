@@ -4,14 +4,28 @@
      Locks: list files/dirs claimed exclusively; other agents must not edit them.
      Use "—" for empty Locks or Next Gate. Remove rows when work is merged + done. -->
 
-| Agent | Focus                   | Worktree                                         | Last Checkpoint                                                                      | Next Gate | Locks                                                      | Updated              |
-| ----- | ----------------------- | ------------------------------------------------ | ------------------------------------------------------------------------------------ | --------- | ---------------------------------------------------------- | -------------------- |
-| codex | layer-2 compaction hook | `/Users/i847761/Projects/stage-aware-compaction` | Implemented workflow-aware compaction plugin, local wrapper, tests, and repo tooling | —         | `SESSION.md`, `src/stage-aware-compaction.ts`, `README.md` | 2026-03-10T23:02:00Z |
+| Agent | Focus                   | Worktree                                         | Last Checkpoint                                                     | Next Gate | Locks | Updated              |
+| ----- | ----------------------- | ------------------------------------------------ | ------------------------------------------------------------------- | --------- | ----- | -------------------- |
+| codex | layer-2 compaction hook | `/Users/i847761/Projects/stage-aware-compaction` | README dogfood evidence added; temp artifacts cleaned; ready for PR | —         | —     | 2026-03-11T00:00:00Z |
 
 ---
 
 <!-- SESSION LOG — prepend new entries; do not delete old ones.
      Format: [Focus: <area>] YYYY-MM-DD — Branch `<branch>` -->
+
+[Focus: layer-2-compaction] 2026-03-11 — Branch `feat/layer-2-compaction`
+
+- Added live dogfood evidence to `README.md`: real compaction summary from session `ses_32738bc67ffesdQJgepVbfae50` confirming inject-only continuity.
+- Removed temporary dogfood artifacts: `.tmp/`, `.codex/specs/dogfood-spec/`.
+- All repo gates pass: `tsc`, `eslint`, `prettier`, `vitest`.
+
+Reality Check — tests rerun? ✅; lint/analyze clean? ✅; context refreshed? ✅.
+
+Next Operator Brief
+
+- Open Work: open a PR from `feat/layer-2-compaction` into `main`.
+- Pending Tests: none.
+- Blockers: none.
 
 [Focus: layer-2-compaction] 2026-03-10 — Branch `main`
 
@@ -28,6 +42,12 @@ Next Operator Brief
 
 - Open Work: optional manual OpenCode dogfooding to confirm compaction behavior in a live session.
 - Pending Tests: none; automated workflow continuity tests are passing.
+- Blockers: none.
+
+[Focus: dogfood-compaction] 2026-03-10 — Branch `feat/layer-2-compaction`
+
+- Continue `/spec-execute next dogfood-spec` after compaction.
+- Active files: `.codex/specs/dogfood-spec/tasks.md`, `.codex/specs/dogfood-spec/context.md`, `src/stage-aware-compaction.ts`.
 - Blockers: none.
 
 [Focus: repo-bootstrap] 2026-03-10 — Branch `main`
