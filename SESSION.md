@@ -4,14 +4,35 @@
      Locks: list files/dirs claimed exclusively; other agents must not edit them.
      Use "—" for empty Locks or Next Gate. Remove rows when work is merged + done. -->
 
-| Agent | Focus                   | Worktree                                         | Last Checkpoint                                                                              | Next Gate | Locks | Updated              |
-| ----- | ----------------------- | ------------------------------------------------ | -------------------------------------------------------------------------------------------- | --------- | ----- | -------------------- |
-| codex | layer-2 compaction hook | `/Users/i847761/Projects/stage-aware-compaction` | Bug-fix workflow dogfood confirmed; README updated with both spec+bug evidence; ready for PR | —         | —     | 2026-03-11T00:51:00Z |
+| Agent | Focus              | Worktree                                         | Last Checkpoint                                                                       | Next Gate | Locks | Updated              |
+| ----- | ------------------ | ------------------------------------------------ | ------------------------------------------------------------------------------------- | --------- | ----- | -------------------- |
+| codex | hybrid enhancement | `/Users/i847761/Projects/stage-aware-compaction` | Hybrid enhancement implemented, tested (9/9), generic dogfood confirmed; ready for PR | —         | —     | 2026-03-11T01:30:00Z |
 
 ---
 
 <!-- SESSION LOG — prepend new entries; do not delete old ones.
      Format: [Focus: <area>] YYYY-MM-DD — Branch `<branch>` -->
+
+[Focus: hybrid-enhancement] 2026-03-11 — Branch `hybrid-enhancement`
+
+- Enhanced plugin from narrow workflow-only to hybrid: generic continuity (always) + workflow augmentation (conditional).
+- Added `HybridState`, `GenericState`, `WorkflowAugmentation` types and `buildHybridState`, `renderHybridContinuationContext` functions.
+- Generic layer parses `SESSION.md` for focus area, open work, completed items, decisions, blockers, pending tests.
+- Restructured rendered output: generic sections first, then `## Workflow-Aware Augmentation` section (only for canonical workflows).
+- Fixed pre-existing bug: `collectBlockers` now filters "Blockers: none." instead of treating it as a real blocker.
+- Preserved all existing workflow-aware behavior: `buildSpecWorkflowState`, `buildBugWorkflowState`, stage detection, stage details tables unchanged.
+- Preserved backward compatibility: `buildWorkflowState` and `renderContinuationContext` still exported and working.
+- Tests: 9 passing (4 backward-compatible + 5 new hybrid tests).
+- Generic dogfood confirmed: session `ses_32703dab1ffeuDkvLninXANVXD`, compaction summary contained `## Stage-Aware Continuation` with generic fields, no workflow augmentation.
+- All repo gates pass: `tsc`, `eslint`, `prettier`, `vitest`.
+
+Reality Check — tests rerun? ✅; lint/analyze clean? ✅; context refreshed? ✅.
+
+Next Operator Brief
+
+- Open Work: open a PR from `hybrid-enhancement` into `main`.
+- Pending Tests: none.
+- Blockers: none.
 
 [Focus: layer-2-compaction] 2026-03-11 — Branch `feat/layer-2-compaction`
 
