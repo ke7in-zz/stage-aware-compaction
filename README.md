@@ -165,11 +165,15 @@ That is intentionally not implemented here.
 
 ## Live dogfood evidence
 
-The plugin was validated with a real compaction event in session
-`ses_32738bc67ffesdQJgepVbfae50`. Token count climbed from 18k → 143k across six
-turns then dropped to 51k — consistent with compaction. The assistant message with
-`"mode": "compaction"` and `"summary": true` contained this continuation block,
-preserved verbatim from the plugin's injected context:
+### Spec workflow — session `ses_32738bc67ffesdQJgepVbfae50`
+
+Token count climbed from 18k → 143k across six turns then dropped to 51k —
+consistent with compaction. The compaction summary preserved `dogfood-spec`,
+canonical `spec-execute`, the `context.md`-first instruction, harness gate command
+pattern, artifact progression, and open decisions/discoveries.
+
+The `## Stage-Aware Continuation` block injected by the plugin (compaction model
+rewrites it behaviorally; proof is the resulting summary, not verbatim reproduction):
 
 ```md
 ## Stage-Aware Continuation
@@ -244,7 +248,54 @@ preserved `dogfood-spec`, canonical `spec-execute`, the `context.md`-first
 instruction, harness gate command pattern, artifact progression, and open
 decisions/discoveries. That is the intended outcome.
 
-## Validation scenarios
+### Bug workflow — session `ses_327240060ffe78bWr5Tsm4Qv1n`
+
+Token count climbed from 18k → 172k across eight turns then dropped to 19k —
+consistent with compaction. The compaction summary preserved `dogfood-bug`,
+canonical `bug-fix`, the active artifact (`analysis.md`), the transition gate
+(run gates → `bug-verify`), and the next action (implement fix + add regression tests).
+
+The `## Stage-Aware Continuation` block extracted from the compaction summary:
+
+```md
+## Stage-Aware Continuation
+
+Preserve the canonical workflow names exactly. Treat this as the authoritative resume brief for compaction continuity.
+
+## Workflow Type
+
+- bug
+
+## Canonical Workflow Stage
+
+- bug-fix
+
+## Source Artifacts
+
+- .codex/bugs/dogfood-bug/report.md
+- .codex/bugs/dogfood-bug/analysis.md
+- .codex/bugs/dogfood-bug/harness/progress.md
+
+## Current Artifact
+
+- .codex/bugs/dogfood-bug/analysis.md
+
+## Transition Gate
+
+- Implement the approved fix, add regression tests, run format/lint/typecheck/tests, then request approval to proceed to `bug-verify`.
+
+## Primary Objective
+
+- Implement the approved minimal safe fix with regression coverage and no unrelated refactoring.
+
+## Current Step
+
+- Apply the approved changes from `analysis.md`: (1) register `experimental.session.compacting` hook, (2) implement `detectBugStage` using `harness/progress.md` + artifact presence, (3) implement `buildBugState` to render `## Stage-Aware Continuation` block, (4) push rendered context via `output.context.push(...)` inject-only, (5) add regression tests for `bug-fix` and `bug-verify` stage detection. Then run gates and prepare hand-off.
+
+## Next Action
+
+- Implement the approved minimal fix for dogfood-bug: register the hook, implement `detectBugStage` and `buildBugState`, add regression tests, run format/lint/typecheck/tests, and prepare the hand-off to `bug-verify`.
+```
 
 Automated tests cover two realistic compaction scenarios:
 

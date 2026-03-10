@@ -4,14 +4,28 @@
      Locks: list files/dirs claimed exclusively; other agents must not edit them.
      Use "—" for empty Locks or Next Gate. Remove rows when work is merged + done. -->
 
-| Agent | Focus                   | Worktree                                         | Last Checkpoint                                                     | Next Gate | Locks | Updated              |
-| ----- | ----------------------- | ------------------------------------------------ | ------------------------------------------------------------------- | --------- | ----- | -------------------- |
-| codex | layer-2 compaction hook | `/Users/i847761/Projects/stage-aware-compaction` | README dogfood evidence added; temp artifacts cleaned; ready for PR | —         | —     | 2026-03-11T00:00:00Z |
+| Agent | Focus                   | Worktree                                         | Last Checkpoint                                                                              | Next Gate | Locks | Updated              |
+| ----- | ----------------------- | ------------------------------------------------ | -------------------------------------------------------------------------------------------- | --------- | ----- | -------------------- |
+| codex | layer-2 compaction hook | `/Users/i847761/Projects/stage-aware-compaction` | Bug-fix workflow dogfood confirmed; README updated with both spec+bug evidence; ready for PR | —         | —     | 2026-03-11T00:51:00Z |
 
 ---
 
 <!-- SESSION LOG — prepend new entries; do not delete old ones.
      Format: [Focus: <area>] YYYY-MM-DD — Branch `<branch>` -->
+
+[Focus: layer-2-compaction] 2026-03-11 — Branch `feat/layer-2-compaction`
+
+- Bug-fix workflow dogfood: real compaction in session `ses_327240060ffe78bWr5Tsm4Qv1n`; token count climbed 18k → 172k then dropped to 19k; compaction summary preserved `dogfood-bug`, canonical `bug-fix`, active artifact (`analysis.md`), transition gate, and `bug-verify` hand-off.
+- Updated `README.md` with bug-fix dogfood evidence section.
+- All repo gates pass: `tsc`, `eslint`, `prettier`, `vitest`.
+
+Reality Check — tests rerun? ✅; lint/analyze clean? ✅; context refreshed? ✅.
+
+Next Operator Brief
+
+- Open Work: open a PR from `feat/layer-2-compaction` into `main`.
+- Pending Tests: none.
+- Blockers: none.
 
 [Focus: layer-2-compaction] 2026-03-11 — Branch `feat/layer-2-compaction`
 
