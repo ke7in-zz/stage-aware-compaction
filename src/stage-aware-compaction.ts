@@ -27,6 +27,52 @@ type BugStage = (typeof CANONICAL_BUG_STAGES)[number];
 type CanonicalStage = (typeof CANONICAL_STAGES)[number];
 type WorkflowType = "spec" | "bug" | "unknown";
 
+/**
+ * Generic continuity fields — always populated for any session.
+ */
+type GenericState = {
+  primaryObjective: string;
+  currentStep: string;
+  status: string;
+  completed: string[];
+  remaining: string[];
+  decisions: string[];
+  activeFiles: string[];
+  blockers: string[];
+  nextAction: string;
+};
+
+/**
+ * Workflow-specific augmentation — populated only when a canonical spec or bug
+ * workflow is clearly detected.
+ */
+type WorkflowAugmentation = {
+  workflowType: "spec" | "bug";
+  canonicalStage: CanonicalStage;
+  sourceArtifacts: string[];
+  currentArtifact: string;
+  artifactStatus: string;
+  transitionGate: string;
+  approvedDecisions: string[];
+  pendingDecisions: string[];
+  dependencies: string[];
+  verification: string[];
+};
+
+/**
+ * Combined hybrid state. The generic layer is always present; the workflow
+ * augmentation is present only when the session clearly matches a canonical
+ * workflow.
+ */
+type HybridState = {
+  generic: GenericState;
+  workflow: WorkflowAugmentation | null;
+};
+
+/**
+ * @deprecated Preserved for backward compatibility with existing tests.
+ * Maps to HybridState internally.
+ */
 type WorkflowState = {
   workflowType: WorkflowType;
   canonicalStage: CanonicalStage | "uncertain";
@@ -255,30 +301,81 @@ const BUG_STAGE_DETAILS: Record<
 export const StageAwareCompactionPlugin: Plugin = async ({
   directory,
   worktree,
+  client,
 }) => {
   const root = worktree || directory;
 
-  return {
-    "experimental.session.compacting": async (_input, output) => {
-      const snapshot = await readWorkflowSnapshot(root);
-      const workflowState = await buildWorkflowState(root, snapshot);
+  const log = async (
+    level: "debug" | "info" | "warn" | "error",
+    message: string,
+    extra?: Record<string, unknown>,
+  ) => {
+    try {
+      await client.app.log({
+        body: { service: "stage-aware-compaction", level, message, ...extra },
+      });
+    } catch {
+      // log failures must never break the hook
+    }
+  };
 
-      output.context.push(renderContinuationContext(workflowState));
+  return {
+    "experimental.session.compacting": async (input, output) => {
+      try {
+        const snapshot = await readWorkflowSnapshot(root);
+        const hybridState = await buildHybridState(root, snapshot);
+
+        const mode = hybridState.workflow
+          ? `workflow:${hybridState.workflow.workflowType}/${hybridState.workflow.canonicalStage}`
+          : "generic";
+        const artifact = hybridState.workflow?.currentArtifact ?? null;
+
+        if (
+          !hybridState.generic.primaryObjective ||
+          hybridState.generic.primaryObjective.includes("Resume from")
+        ) {
+          await log("warn", "compaction fired with no session state detected", {
+            sessionID: input.sessionID,
+            mode,
+            root,
+          });
+        } else {
+          await log("info", "compaction context injected", {
+            sessionID: input.sessionID,
+            mode,
+            ...(artifact ? { artifact } : {}),
+          });
+        }
+
+        output.context.push(renderHybridContinuationContext(hybridState));
+      } catch (err) {
+        await log("error", "compaction hook failed — no context injected", {
+          sessionID: input.sessionID,
+          error: err instanceof Error ? err.message : String(err),
+          root,
+        });
+      }
     },
   };
 };
 
 export default StageAwareCompactionPlugin;
 
-export async function buildWorkflowState(
+/**
+ * Primary entry point for the hybrid compaction system.
+ * Returns a HybridState with generic fields always populated and workflow
+ * augmentation only when a canonical workflow is clearly detected.
+ */
+export async function buildHybridState(
   root: string,
   snapshot?: WorkflowSnapshot,
-): Promise<WorkflowState> {
+): Promise<HybridState> {
   const resolvedSnapshot = snapshot ?? (await readWorkflowSnapshot(root));
   const stageHint = findLatestStageMention(
     [resolvedSnapshot.sessionText, resolvedSnapshot.agentsText].join("\n"),
   );
 
+  // Try spec workflow with stage hint
   if (stageHint?.startsWith("spec-")) {
     const activeSpec = await pickActiveArtifactDirectory(
       root,
@@ -286,7 +383,7 @@ export async function buildWorkflowState(
       "spec",
     );
     if (activeSpec) {
-      return buildSpecWorkflowState(
+      return buildSpecHybridState(
         root,
         activeSpec,
         resolvedSnapshot,
@@ -295,6 +392,7 @@ export async function buildWorkflowState(
     }
   }
 
+  // Try bug workflow with stage hint
   if (stageHint?.startsWith("bug-")) {
     const activeBug = await pickActiveArtifactDirectory(
       root,
@@ -302,7 +400,7 @@ export async function buildWorkflowState(
       "bug",
     );
     if (activeBug) {
-      return buildBugWorkflowState(
+      return buildBugHybridState(
         root,
         activeBug,
         resolvedSnapshot,
@@ -311,65 +409,102 @@ export async function buildWorkflowState(
     }
   }
 
+  // Try spec workflow without hint (artifact presence)
   const activeSpec = await pickActiveArtifactDirectory(
     root,
     resolvedSnapshot,
     "spec",
   );
   if (activeSpec) {
-    return buildSpecWorkflowState(root, activeSpec, resolvedSnapshot);
+    return buildSpecHybridState(root, activeSpec, resolvedSnapshot);
   }
 
+  // Try bug workflow without hint (artifact presence)
   const activeBug = await pickActiveArtifactDirectory(
     root,
     resolvedSnapshot,
     "bug",
   );
   if (activeBug) {
-    return buildBugWorkflowState(root, activeBug, resolvedSnapshot);
+    return buildBugHybridState(root, activeBug, resolvedSnapshot);
   }
 
-  const blockers = collectBlockers(resolvedSnapshot.sessionText);
-  const activeFiles = collectActiveFiles(resolvedSnapshot.sessionText, []);
-
+  // No workflow detected — return generic-only state
   return {
-    workflowType: "unknown",
-    canonicalStage: "uncertain",
-    sourceArtifacts: [],
-    currentArtifact:
-      "No active `.codex/specs/` or `.codex/bugs/` artifact detected.",
-    artifactStatus: "No workflow artifact is active in the current worktree.",
-    transitionGate:
-      "Uncertain — no canonical spec or bug workflow artifact was detected.",
-    primaryObjective:
-      "Resume from the most recent session state without inventing a broader memory system.",
-    currentStep:
-      "Inspect `SESSION.md` and the latest `.codex/` artifacts to re-establish workflow state.",
-    status:
-      blockers.length > 0
-        ? "At risk — blockers recorded in `SESSION.md`."
-        : "Uncertain — workflow state not detected.",
-    completed: [],
-    remaining: [
-      "Determine whether the session should be on the spec workflow or the bug workflow.",
-      "Identify the current canonical stage from the active artifact.",
-    ],
-    decisions: [],
-    approvedDecisions: [],
-    pendingDecisions: ["Active workflow and stage are uncertain."],
-    dependencies: [
-      "`SESSION.md` and `.codex/` artifacts need to be refreshed.",
-    ],
-    activeFiles,
-    blockers,
-    verification: [
-      "Do not continue execution until the active workflow and artifact are clear.",
-    ],
-    nextAction:
-      "Read `SESSION.md`, inspect `.codex/specs/` and `.codex/bugs/`, and re-enter the correct canonical workflow stage.",
+    generic: buildGenericState(resolvedSnapshot),
+    workflow: null,
   };
 }
 
+/**
+ * @deprecated Backward-compatible wrapper. Use buildHybridState for new code.
+ * Flattens HybridState into the legacy WorkflowState shape.
+ */
+export async function buildWorkflowState(
+  root: string,
+  snapshot?: WorkflowSnapshot,
+): Promise<WorkflowState> {
+  const hybrid = await buildHybridState(root, snapshot);
+  return flattenHybridState(hybrid);
+}
+
+/**
+ * Renders the hybrid continuation context: generic fields always, workflow
+ * augmentation conditionally.
+ */
+export function renderHybridContinuationContext(state: HybridState): string {
+  const genericSections: Array<[string, string[]]> = [
+    ["Primary Objective", [state.generic.primaryObjective]],
+    ["Current Step", [state.generic.currentStep]],
+    ["Status", [state.generic.status]],
+    ["Completed", state.generic.completed],
+    ["Remaining", state.generic.remaining],
+    ["Decisions", state.generic.decisions],
+    ["Active Files", state.generic.activeFiles],
+    ["Blockers / Risks", state.generic.blockers],
+    ["Next Action", [state.generic.nextAction]],
+  ];
+
+  const lines = [
+    "## Stage-Aware Continuation",
+    "Preserve the canonical workflow names exactly. Treat this as the authoritative resume brief for compaction continuity.",
+    ...genericSections.flatMap(([title, values]) =>
+      renderSection(title, values),
+    ),
+  ];
+
+  if (state.workflow) {
+    const workflowSections: Array<[string, string[]]> = [
+      ["Workflow Type", [state.workflow.workflowType]],
+      ["Canonical Workflow Stage", [state.workflow.canonicalStage]],
+      ["Source Artifacts", state.workflow.sourceArtifacts],
+      ["Current Artifact", [state.workflow.currentArtifact]],
+      ["Artifact Status", [state.workflow.artifactStatus]],
+      ["Transition Gate", [state.workflow.transitionGate]],
+      ["Approved Decisions", state.workflow.approvedDecisions],
+      ["Pending Decisions / Open Questions", state.workflow.pendingDecisions],
+      ["Dependencies / Preconditions", state.workflow.dependencies],
+      ["Verification / Done Criteria", state.workflow.verification],
+    ];
+
+    lines.push(
+      "",
+      "---",
+      "",
+      "## Workflow-Aware Augmentation",
+      "The following sections apply because this session is part of a canonical workflow. Preserve these fields for workflow continuity.",
+      ...workflowSections.flatMap(([title, values]) =>
+        renderSection(title, values),
+      ),
+    );
+  }
+
+  return lines.join("\n");
+}
+
+/**
+ * @deprecated Backward-compatible renderer. Use renderHybridContinuationContext for new code.
+ */
 export function renderContinuationContext(state: WorkflowState): string {
   const sections: Array<[string, string[]]> = [
     ["Workflow Type", [state.workflowType]],
@@ -411,6 +546,313 @@ async function readWorkflowSnapshot(root: string): Promise<WorkflowSnapshot> {
       path.join(root, ".codex", "bugs"),
     ),
   };
+}
+
+/**
+ * Build generic continuity state from SESSION.md content.
+ * This works for any session — workflow or not.
+ */
+function buildGenericState(snapshot: WorkflowSnapshot): GenericState {
+  const sessionText = snapshot.sessionText;
+  const blockers = collectBlockers(sessionText);
+  const activeFiles = collectActiveFiles(sessionText, []);
+
+  // Extract focus area from the most recent session log entry
+  const focusMatch = sessionText.match(/\[Focus:\s*([^\]]+)\]/);
+  const focusArea = focusMatch?.[1]?.trim() ?? null;
+
+  // Extract open work from the Next Operator Brief
+  const openWork = extractSessionField(sessionText, "Open Work");
+  const pendingTests = extractSessionField(sessionText, "Pending Tests");
+  const blockersField = extractSessionField(sessionText, "Blockers");
+
+  // Extract completed items from session log bullet points
+  const completed = extractSessionLogItems(sessionText);
+
+  // Build objective from focus area + open work
+  const primaryObjective = openWork
+    ? openWork
+    : focusArea
+      ? `Continue work on: ${focusArea}.`
+      : "Resume from the most recent session state.";
+
+  const currentStep = openWork
+    ? `Current open work: ${openWork}`
+    : "Review the latest session state and continue the active task.";
+
+  const status =
+    blockers.length > 0
+      ? `At risk — blockers recorded: ${blockers[0]}`
+      : blockersField &&
+          blockersField.toLowerCase() !== "none" &&
+          blockersField.toLowerCase() !== "none."
+        ? `At risk — ${blockersField}`
+        : focusArea
+          ? `Active — working on ${focusArea}.`
+          : "Session state should be reviewed before continuing.";
+
+  const remaining: string[] = [];
+  if (openWork) {
+    remaining.push(openWork);
+  }
+  if (
+    pendingTests &&
+    pendingTests.toLowerCase() !== "none" &&
+    pendingTests.toLowerCase() !== "none."
+  ) {
+    remaining.push(`Pending tests: ${pendingTests}`);
+  }
+  if (remaining.length === 0) {
+    remaining.push("Review SESSION.md for current state and continue.");
+  }
+
+  const decisions = extractSessionLogDecisions(sessionText);
+
+  const nextAction = openWork
+    ? openWork
+    : "Read SESSION.md and continue from the latest checkpoint.";
+
+  return {
+    primaryObjective,
+    currentStep,
+    status,
+    completed,
+    remaining: uniqueLimited(remaining, 5),
+    decisions: uniqueLimited(decisions, 4),
+    activeFiles,
+    blockers,
+    nextAction,
+  };
+}
+
+/**
+ * Build hybrid state for spec workflows — generic layer + workflow augmentation.
+ */
+async function buildSpecHybridState(
+  root: string,
+  artifact: ArtifactDirectory,
+  snapshot: WorkflowSnapshot,
+  stageHint?: SpecStage,
+): Promise<HybridState> {
+  const legacyState = await buildSpecWorkflowState(
+    root,
+    artifact,
+    snapshot,
+    stageHint,
+  );
+
+  return {
+    generic: {
+      primaryObjective: legacyState.primaryObjective,
+      currentStep: legacyState.currentStep,
+      status: legacyState.status,
+      completed: legacyState.completed,
+      remaining: legacyState.remaining,
+      decisions: legacyState.decisions,
+      activeFiles: legacyState.activeFiles,
+      blockers: legacyState.blockers,
+      nextAction: legacyState.nextAction,
+    },
+    workflow: {
+      workflowType: "spec",
+      canonicalStage: legacyState.canonicalStage as CanonicalStage,
+      sourceArtifacts: legacyState.sourceArtifacts,
+      currentArtifact: legacyState.currentArtifact,
+      artifactStatus: legacyState.artifactStatus,
+      transitionGate: legacyState.transitionGate,
+      approvedDecisions: legacyState.approvedDecisions,
+      pendingDecisions: legacyState.pendingDecisions,
+      dependencies: legacyState.dependencies,
+      verification: legacyState.verification,
+    },
+  };
+}
+
+/**
+ * Build hybrid state for bug workflows — generic layer + workflow augmentation.
+ */
+async function buildBugHybridState(
+  root: string,
+  artifact: ArtifactDirectory,
+  snapshot: WorkflowSnapshot,
+  stageHint?: BugStage,
+): Promise<HybridState> {
+  const legacyState = await buildBugWorkflowState(
+    root,
+    artifact,
+    snapshot,
+    stageHint,
+  );
+
+  return {
+    generic: {
+      primaryObjective: legacyState.primaryObjective,
+      currentStep: legacyState.currentStep,
+      status: legacyState.status,
+      completed: legacyState.completed,
+      remaining: legacyState.remaining,
+      decisions: legacyState.decisions,
+      activeFiles: legacyState.activeFiles,
+      blockers: legacyState.blockers,
+      nextAction: legacyState.nextAction,
+    },
+    workflow: {
+      workflowType: "bug",
+      canonicalStage: legacyState.canonicalStage as CanonicalStage,
+      sourceArtifacts: legacyState.sourceArtifacts,
+      currentArtifact: legacyState.currentArtifact,
+      artifactStatus: legacyState.artifactStatus,
+      transitionGate: legacyState.transitionGate,
+      approvedDecisions: legacyState.approvedDecisions,
+      pendingDecisions: legacyState.pendingDecisions,
+      dependencies: legacyState.dependencies,
+      verification: legacyState.verification,
+    },
+  };
+}
+
+/**
+ * Flatten a HybridState into the legacy WorkflowState shape for backward
+ * compatibility with existing tests and callers.
+ */
+function flattenHybridState(hybrid: HybridState): WorkflowState {
+  if (hybrid.workflow) {
+    return {
+      workflowType: hybrid.workflow.workflowType,
+      canonicalStage: hybrid.workflow.canonicalStage,
+      sourceArtifacts: hybrid.workflow.sourceArtifacts,
+      currentArtifact: hybrid.workflow.currentArtifact,
+      artifactStatus: hybrid.workflow.artifactStatus,
+      transitionGate: hybrid.workflow.transitionGate,
+      primaryObjective: hybrid.generic.primaryObjective,
+      currentStep: hybrid.generic.currentStep,
+      status: hybrid.generic.status,
+      completed: hybrid.generic.completed,
+      remaining: hybrid.generic.remaining,
+      decisions: hybrid.generic.decisions,
+      approvedDecisions: hybrid.workflow.approvedDecisions,
+      pendingDecisions: hybrid.workflow.pendingDecisions,
+      dependencies: hybrid.workflow.dependencies,
+      activeFiles: hybrid.generic.activeFiles,
+      blockers: hybrid.generic.blockers,
+      verification: hybrid.workflow.verification,
+      nextAction: hybrid.generic.nextAction,
+    };
+  }
+
+  return {
+    workflowType: "unknown",
+    canonicalStage: "uncertain",
+    sourceArtifacts: [],
+    currentArtifact: "No active workflow artifact detected.",
+    artifactStatus: "No workflow artifact is active in the current worktree.",
+    transitionGate:
+      "No canonical workflow detected — generic continuity mode active.",
+    primaryObjective: hybrid.generic.primaryObjective,
+    currentStep: hybrid.generic.currentStep,
+    status: hybrid.generic.status,
+    completed: hybrid.generic.completed,
+    remaining: hybrid.generic.remaining,
+    decisions: hybrid.generic.decisions,
+    approvedDecisions: [],
+    pendingDecisions: [],
+    dependencies: [],
+    activeFiles: hybrid.generic.activeFiles,
+    blockers: hybrid.generic.blockers,
+    verification: [],
+    nextAction: hybrid.generic.nextAction,
+  };
+}
+
+/**
+ * Extract a field value from the Next Operator Brief section of SESSION.md.
+ * Fields are formatted as "- Field Name: value" or "Field Name: value".
+ */
+function extractSessionField(
+  sessionText: string,
+  fieldName: string,
+): string | null {
+  const briefSection = extractMarkdownSection(
+    sessionText,
+    "Next Operator Brief",
+  );
+  if (!briefSection) {
+    // Fall back to searching the whole text for the field pattern
+    const regex = new RegExp(`^[-*]?\\s*${fieldName}:\\s*(.+)$`, "im");
+    const match = sessionText.match(regex);
+    return match?.[1]?.trim() ?? null;
+  }
+
+  const regex = new RegExp(`^[-*]?\\s*${fieldName}:\\s*(.+)$`, "im");
+  const match = briefSection.match(regex);
+  return match?.[1]?.trim() ?? null;
+}
+
+/**
+ * Extract completed work items from session log entries.
+ * Looks for bullet-point items under session log entries (not under Next Operator Brief).
+ */
+function extractSessionLogItems(sessionText: string): string[] {
+  const items: string[] = [];
+  const lines = sessionText.split(/\r?\n/);
+  let inLogEntry = false;
+  let inBrief = false;
+
+  for (const line of lines) {
+    // Detect session log entry headers: [Focus: ...] YYYY-MM-DD
+    if (/^\[Focus:/.test(line)) {
+      inLogEntry = true;
+      inBrief = false;
+      continue;
+    }
+    // Detect Next Operator Brief section
+    if (/^Next Operator Brief/i.test(line)) {
+      inBrief = true;
+      inLogEntry = false;
+      continue;
+    }
+    // Detect Reality Check line — end of log items
+    if (/^Reality Check/i.test(line)) {
+      inLogEntry = false;
+      continue;
+    }
+    // Detect section breaks
+    if (/^---/.test(line) || /^#/.test(line)) {
+      inLogEntry = false;
+      inBrief = false;
+      continue;
+    }
+
+    if (inLogEntry && !inBrief) {
+      const trimmed = line.trim();
+      if (trimmed.startsWith("- ") && !trimmed.startsWith("- Blockers:")) {
+        items.push(cleanLine(trimmed));
+      }
+    }
+  }
+
+  return uniqueLimited(items, 5);
+}
+
+/**
+ * Extract decision-like items from session log entries.
+ * Looks for lines containing "decision", "decided", or "chose" patterns.
+ */
+function extractSessionLogDecisions(sessionText: string): string[] {
+  const decisions: string[] = [];
+  const lines = sessionText.split(/\r?\n/);
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (
+      trimmed.startsWith("- ") &&
+      /\b(?:decision|decided|chose|prefer|chosen|approved)\b/i.test(trimmed)
+    ) {
+      decisions.push(cleanLine(trimmed));
+    }
+  }
+
+  return uniqueLimited(decisions, 4);
 }
 
 async function buildSpecWorkflowState(
@@ -1098,7 +1540,12 @@ function collectBlockers(...texts: string[]): string[] {
       ),
   );
 
-  return uniqueLimited(blockers.map(cleanLine), 4);
+  return uniqueLimited(
+    blockers
+      .map(cleanLine)
+      .filter((line) => !/^(?:Blockers:\s*)?none\.?$/i.test(line)),
+    4,
+  );
 }
 
 function collectActiveFiles(
