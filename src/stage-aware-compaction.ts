@@ -301,15 +301,60 @@ const BUG_STAGE_DETAILS: Record<
 export const StageAwareCompactionPlugin: Plugin = async ({
   directory,
   worktree,
+  client,
 }) => {
   const root = worktree || directory;
 
-  return {
-    "experimental.session.compacting": async (_input, output) => {
-      const snapshot = await readWorkflowSnapshot(root);
-      const hybridState = await buildHybridState(root, snapshot);
+  const log = async (
+    level: "debug" | "info" | "warn" | "error",
+    message: string,
+    extra?: Record<string, unknown>,
+  ) => {
+    try {
+      await client.app.log({
+        body: { service: "stage-aware-compaction", level, message, ...extra },
+      });
+    } catch {
+      // log failures must never break the hook
+    }
+  };
 
-      output.context.push(renderHybridContinuationContext(hybridState));
+  return {
+    "experimental.session.compacting": async (input, output) => {
+      try {
+        const snapshot = await readWorkflowSnapshot(root);
+        const hybridState = await buildHybridState(root, snapshot);
+
+        const mode = hybridState.workflow
+          ? `workflow:${hybridState.workflow.workflowType}/${hybridState.workflow.canonicalStage}`
+          : "generic";
+        const artifact = hybridState.workflow?.currentArtifact ?? null;
+
+        if (
+          !hybridState.generic.primaryObjective ||
+          hybridState.generic.primaryObjective.includes("Resume from")
+        ) {
+          await log("warn", "compaction fired with no session state detected", {
+            sessionID: input.sessionID,
+            mode,
+            root,
+          });
+        } else {
+          await log("info", "compaction context injected", {
+            sessionID: input.sessionID,
+            mode,
+            ...(artifact ? { artifact } : {}),
+          });
+        }
+
+        output.context.push(renderHybridContinuationContext(hybridState));
+      } catch (err) {
+        await log("error", "compaction hook failed — no context injected", {
+          sessionID: input.sessionID,
+          error: err instanceof Error ? err.message : String(err),
+          root,
+        });
+      }
     },
   };
 };
